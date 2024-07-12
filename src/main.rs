@@ -11,7 +11,9 @@ fn main() {
         match stream {
             Ok(mut stream) => {
                 println!("accepted new connection");
-                stream.write_all(b"+PONG\r\n").expect("write ping response");
+                for _ in 0..2 {
+                    stream.write_all(b"+PONG\r\n").expect("write ping response");
+                }
             }
             Err(e) => {
                 println!("error: {}", e);
