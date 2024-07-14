@@ -28,16 +28,22 @@ impl Command {
                 }
 
                 match &elements[0][..] {
-                    b"PING" => Ok(Command::Ping),
+                    b"PING" => {
+                        if elements.len() != 1 {
+                            return Err(anyhow!("expected: PING (no arguments)"));
+                        }
+
+                        Ok(Command::Ping)
+                    }
                     b"ECHO" => {
-                        if elements.len() < 2 {
+                        if elements.len() != 2 {
                             return Err(anyhow!("expected: ECHO <message>"));
                         }
 
                         Ok(Command::Echo(elements[1].clone()))
                     }
                     b"GET" => {
-                        if elements.len() < 2 {
+                        if elements.len() != 2 {
                             return Err(anyhow!("expected: GET <key>"));
                         }
                         let key = String::from_utf8(elements[1].clone().to_vec())?;
@@ -45,7 +51,7 @@ impl Command {
                         Ok(Command::Get(key))
                     }
                     b"SET" => {
-                        if elements.len() < 3 {
+                        if elements.len() != 3 {
                             return Err(anyhow!("expected: SET <key> <value>"));
                         }
                         let key = String::from_utf8(elements[1].to_vec())?;
@@ -53,7 +59,7 @@ impl Command {
 
                         Ok(Command::Set { key, value })
                     }
-                    _ => Err(anyhow!("unknown command: {:?}", elements[0])),
+                    _ => Err(anyhow!("unknown command: {}", elements[0].escape_ascii())),
                 }
             }
             _ => Err(anyhow!("invalid frame for command: {:?}", frame)),
