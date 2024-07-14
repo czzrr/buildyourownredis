@@ -1,6 +1,5 @@
 use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
+    collections::HashMap, env, sync::{Arc, Mutex}
 };
 
 use bytes::Bytes;
@@ -16,8 +15,17 @@ type Db = Arc<Mutex<HashMap<String, DbValue>>>;
 
 #[tokio::main]
 async fn main() {
+    let args: Vec<_> = env::args().collect();
+    let mut port: u16 = 6379;
+    if let Some(port_pos) = args.iter().position(|arg| arg == "--port") {
+        port = args.get(port_pos + 1).expect("expected: --port <port>").parse().expect("expected valid port number");
+    }
+    
     let db: Db = Arc::new(Mutex::new(HashMap::new()));
-    let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
+
+    let addr = format!("127.0.0.1:{port}");
+    println!("listening on {addr}");
+    let listener = TcpListener::bind(addr).await.unwrap();
     loop {
         let (stream, _) = listener.accept().await.expect("incoming connection");
         let db = db.clone();
@@ -72,7 +80,7 @@ async fn handle_command(frame_stream: &mut FrameStream, command: Command, db: Db
                 value, expiry
             };
             db.lock().unwrap().insert(key.clone(), db_value);
-            
+
             Frame::Bulk(Bytes::from_static(b"OK"))
         }
     };
