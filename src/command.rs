@@ -8,7 +8,12 @@ pub enum Command {
     Ping,
     Echo(Bytes),
     Get(String),
-    Set { key: String, value: Bytes, px: Option<u64> },
+    Set {
+        key: String,
+        value: Bytes,
+        px: Option<u64>,
+    },
+    Info,
 }
 
 impl Command {
@@ -66,7 +71,14 @@ impl Command {
                             }
                         }
 
-                        Ok(Command::Set { key, value, px})
+                        Ok(Command::Set { key, value, px })
+                    }
+                    b"INFO" => {
+                        if elements.len() > 2 {
+                            return Err(anyhow!("expected: INFO [replication] "));
+                        }
+
+                        Ok(Command::Info)
                     }
                     _ => Err(anyhow!("unknown command: {}", elements[0].escape_ascii())),
                 }
