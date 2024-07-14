@@ -51,44 +51,33 @@ impl Frame {
             // Bulk string
             b'$' => {
                 let len = Self::parse_u64(input)? as usize;
-                if input.remaining() < len {
-                    return Err(ParseError::Incomplete);
-                }
-
-                let mut buf = vec![0u8; len];
-                input
-                    .read_exact(&mut buf)
-                    .map_err(|err| ParseError::Other(anyhow!(err)))?;
-                if buf.as_slice().windows(2).find(|w| w == b"\r\n").is_some() {
+                let line = Frame::get_line(input)?;
+                if len != line.len() {
                     return Err(ParseError::Other(anyhow!(
-                        "CRLF not allowed in bulk string"
+                        "expected bulk string of length {}, got one of length {}",
+                        len,
+                        line.len()
                     )));
                 }
-                Self::parse_crlf(input)?;
 
-                Ok(Frame::Bulk(Bytes::from(buf)))
+                Ok(Frame::Bulk(Bytes::copy_from_slice(line)))
             }
             b => Err(ParseError::Other(anyhow!("unknown data type token: {}", b))),
         }
     }
 
     fn parse_u64(input: &mut Cursor<&[u8]>) -> Result<u64, ParseError> {
-        if input.remaining() < 3 {
-            return Err(ParseError::Incomplete);
-        }
-        let (len, used) = <u64 as atoi::FromRadix10Checked>::from_radix_10_checked(
-            &input.get_ref()[input.position() as usize..],
-        );
+        let line = Self::get_line(input)?;
+        let (len, used) = <u64 as atoi::FromRadix10Checked>::from_radix_10_checked(line);
         if len.is_none() {
+            return Err(ParseError::Other(anyhow!("number too large for u64")));
+        }
+        if used < line.len() {
             return Err(ParseError::Other(anyhow!(
-                "length is too large to fit into u64"
+                "expected number, got {}",
+                line.escape_ascii()
             )));
         }
-        if used == 0 {
-            return Err(ParseError::Other(anyhow!("expected length, got nothing")));
-        }
-        input.advance(used);
-        Self::parse_crlf(input)?;
 
         Ok(len.unwrap())
     }
@@ -101,29 +90,29 @@ impl Frame {
         Ok(line)
     }
 
-    fn parse_crlf(input: &mut Cursor<&[u8]>) -> Result<(), ParseError> {
-        if input.remaining() < 2 {
-            return Err(ParseError::Incomplete);
-        }
+    // fn parse_crlf(input: &mut Cursor<&[u8]>) -> Result<(), ParseError> {
+    //     if input.remaining() < 2 {
+    //         return Err(ParseError::Incomplete);
+    //     }
 
-        let pos = input.position() as usize;
-        if &input.get_ref()[pos..pos + 2] == b"\r\n" {
-            input.advance(2);
-            Ok(())
-        } else {
-            Err(ParseError::Other(anyhow!(
-                "expected CRLF, got {}",
-                input.get_ref().escape_ascii()
-            )))
-        }
-    }
+    //     let pos = input.position() as usize;
+    //     if &input.get_ref()[pos..pos + 2] == b"\r\n" {
+    //         input.advance(2);
+    //         Ok(())
+    //     } else {
+    //         Err(ParseError::Other(anyhow!(
+    //             "expected CRLF, got {}",
+    //             input.get_ref().escape_ascii()
+    //         )))
+    //     }
+    // }
 
     fn crlf_pos(input: &Cursor<&[u8]>) -> Option<u64> {
-        input
-            .get_ref()
+        input.get_ref()[input.position() as usize..]
             .windows(2)
             .position(|w| w == b"\r\n")
             .map(|p| p as u64)
+            .map(|p| p + input.position())
     }
 }
 
@@ -192,5 +181,26 @@ mod tests {
 
         let a = Frame::parse(&mut Cursor::new(b"*1\r\n$4\r\nPI"));
         assert!(matches![a, Err(ParseError::Incomplete)]);
+    }
+
+    #[test]
+    fn test_get_line() {
+        let mut cursor = Cursor::new(&b"hello\r\n"[..]);
+
+        let line = Frame::get_line(&mut cursor).unwrap();
+
+        assert_eq!(b"hello", line);
+    }
+
+    #[test]
+    fn test_crlf_pos() {
+        let mut cursor = Cursor::new(&b"hello\r\n"[..]);
+        let pos = Frame::crlf_pos(&mut cursor).unwrap();
+        assert_eq!(5, pos);
+
+        let mut cursor = Cursor::new(&b"hi\r\nhello\r\nyo\r\n"[..]);
+        cursor.set_position(4);
+        let pos = Frame::crlf_pos(&mut cursor).unwrap();
+        assert_eq!(9, pos);
     }
 }
