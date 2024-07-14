@@ -8,7 +8,7 @@ pub enum Command {
     Ping,
     Echo(Bytes),
     Get(String),
-    Set { key: String, value: Bytes },
+    Set { key: String, value: Bytes, px: Option<u64> },
 }
 
 impl Command {
@@ -51,13 +51,22 @@ impl Command {
                         Ok(Command::Get(key))
                     }
                     b"SET" => {
-                        if elements.len() != 3 {
-                            return Err(anyhow!("expected: SET <key> <value>"));
+                        if elements.len() < 3 {
+                            return Err(anyhow!("expected: SET <key> <value> [PX milliseconds] "));
                         }
                         let key = String::from_utf8(elements[1].to_vec())?;
                         let value = elements[2].clone();
 
-                        Ok(Command::Set { key, value })
+                        let mut px = None;
+                        if let Some(px_pos) = elements.iter().position(|e| &e[..] == b"px") {
+                            if let Some(millis) = elements.get(px_pos + 1) {
+                                if let Some(millis) = atoi::atoi::<u64>(&millis) {
+                                    px = Some(millis);
+                                }
+                            }
+                        }
+
+                        Ok(Command::Set { key, value, px})
                     }
                     _ => Err(anyhow!("unknown command: {}", elements[0].escape_ascii())),
                 }

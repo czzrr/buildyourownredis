@@ -5,12 +5,14 @@ use std::{
 
 use bytes::Bytes;
 use redis::{command::Command, frame::Frame, net::FrameStream};
-use tokio::{
-    net::{TcpListener, TcpStream},
-    stream,
-};
+use tokio::{net::{TcpListener, TcpStream}, time::Instant};
 
-type Db = Arc<Mutex<HashMap<String, Bytes>>>;
+struct DbValue {
+    value: Bytes,
+    expiry: Option<Instant>
+}
+
+type Db = Arc<Mutex<HashMap<String, DbValue>>>;
 
 #[tokio::main]
 async fn main() {
@@ -47,14 +49,30 @@ async fn handle_command(frame_stream: &mut FrameStream, command: Command, db: Db
         Command::Ping => Frame::Bulk(Bytes::from_static(b"PONG")),
         Command::Echo(bytes) => Frame::Bulk(bytes),
         Command::Get(key) => {
-            let db = db.lock().unwrap();
+            let mut db = db.lock().unwrap();
             match db.get(&key) {
-                Some(value) => Frame::Bulk(value.clone()),
+                
+                Some(DbValue { value, expiry}) => {
+                    let frame = Frame::Bulk(value.clone());
+
+                    if let Some(expiry ) = expiry {
+                        if expiry < &tokio::time::Instant::now() {
+                            db.remove(&key);
+                        }
+                    }
+                    
+                    frame
+                }
                 _ => Frame::Null,
             }
         }
-        Command::Set { key, value } => {
-            db.lock().unwrap().insert(key, value);
+        Command::Set { key, value, px } => {
+            let expiry = px.map(|millis| Instant::now() + tokio::time::Duration::from_millis(millis));
+            let db_value = DbValue {
+                value, expiry
+            };
+            db.lock().unwrap().insert(key.clone(), db_value);
+            
             Frame::Bulk(Bytes::from_static(b"OK"))
         }
     };
