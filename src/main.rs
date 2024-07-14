@@ -75,7 +75,7 @@ async fn handle_command(
                     .await
                     .expect("write GET response"),
                 _ => frame_stream
-                    .write_frame(Frame::Error(Bytes::from(format!("invalid key: {}", key))))
+                    .write_frame(Frame::Null)
                     .await
                     .expect("write GET response"),
             }

@@ -8,6 +8,7 @@ pub enum Frame {
     Bulk(Bytes),
     Array(Vec<Frame>),
     Error(Bytes),
+    Null,
 }
 
 #[derive(Debug)]

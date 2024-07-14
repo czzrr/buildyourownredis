@@ -66,6 +66,9 @@ impl FrameStream {
                 self.stream.write_all(b"-").await?;
                 self.stream.write_all_buf(&mut bytes).await?;
                 self.stream.write_all(b"\r\n").await?;
+            },
+            Frame::Null => {
+                self.stream.write_all(b"_\r\n").await?;
             }
         }
         self.stream.flush().await?;
