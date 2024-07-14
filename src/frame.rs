@@ -7,7 +7,7 @@ use bytes::{Buf, Bytes};
 pub enum Frame {
     Bulk(Bytes),
     Array(Vec<Frame>),
-    Error(Bytes)
+    Error(Bytes),
 }
 
 #[derive(Debug)]

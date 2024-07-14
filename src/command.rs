@@ -7,6 +7,8 @@ use crate::frame::Frame;
 pub enum Command {
     Ping,
     Echo(Bytes),
+    Get(String),
+    Set { key: String, value: Bytes },
 }
 
 impl Command {
@@ -31,7 +33,25 @@ impl Command {
                         if elements.len() < 2 {
                             return Err(anyhow!("expected: ECHO <message>"));
                         }
-                        Ok(Command::Echo(elements.remove(1)))
+
+                        Ok(Command::Echo(elements[1].clone()))
+                    }
+                    b"GET" => {
+                        if elements.len() < 2 {
+                            return Err(anyhow!("expected: GET <key>"));
+                        }
+                        let key = String::from_utf8(elements[1].clone().to_vec())?;
+
+                        Ok(Command::Get(key))
+                    }
+                    b"SET" => {
+                        if elements.len() < 3 {
+                            return Err(anyhow!("expected: SET <key> <value>"));
+                        }
+                        let key = String::from_utf8(elements[1].to_vec())?;
+                        let value = elements[2].clone();
+
+                        Ok(Command::Set { key, value })
                     }
                     _ => Err(anyhow!("unknown command: {:?}", elements[0])),
                 }
