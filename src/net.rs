@@ -61,6 +61,11 @@ impl FrameStream {
                 for frame in frames {
                     Box::pin(self.write_frame(frame)).await?;
                 }
+            },
+            Frame::Error(mut bytes) => {
+                self.stream.write_all(b"-").await?;
+                self.stream.write_all_buf(&mut bytes).await?;
+                self.stream.write_all(b"\r\n").await?;
             }
         }
         self.stream.flush().await?;

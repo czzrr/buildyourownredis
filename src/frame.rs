@@ -1,18 +1,17 @@
-use std::{
-    fmt::Display,
-    io::{Cursor, Read, Seek},
-};
+use std::{fmt::Display, io::Cursor};
 
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use bytes::{Buf, Bytes};
 
 #[derive(Debug)]
 pub enum Frame {
     Bulk(Bytes),
     Array(Vec<Frame>),
+    Error(Bytes)
 }
 
 #[derive(Debug)]
+// this error
 pub enum ParseError {
     Incomplete,
     Other(anyhow::Error),
@@ -28,9 +27,9 @@ impl Display for ParseError {
 }
 
 impl Frame {
-    pub fn check(_input: &mut Cursor<&[u8]>) -> bool {
-        todo!();
-    }
+    // pub fn check(_input: &mut Cursor<&[u8]>) -> bool {
+    //     todo!();
+    // }
 
     pub fn parse(input: &mut Cursor<&[u8]>) -> Result<Self, ParseError> {
         if !input.has_remaining() {
