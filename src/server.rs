@@ -1,6 +1,5 @@
 use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
+    collections::HashMap, net::Ipv4Addr, sync::{Arc, Mutex}
 };
 
 use bytes::Bytes;
@@ -92,10 +91,11 @@ struct DbValue {
 
 type Db = Arc<Mutex<HashMap<String, DbValue>>>;
 
+#[derive(Debug)]
 pub enum Role {
     Master,
     Slave {
-        master_host: String,
+        master_host: Ipv4Addr,
         master_port: u16,
     },
 }
