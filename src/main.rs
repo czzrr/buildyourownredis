@@ -1,7 +1,7 @@
+use anyhow::Context;
 use clap::Parser;
 use redis::server::{Role, Server};
-use std::{net::Ipv4Addr, sync::Arc};
-use tokio::net::TcpListener;
+use std::net::Ipv4Addr;
 
 #[derive(Parser, Debug)]
 #[command()]
@@ -13,13 +13,13 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     let port = args.port.unwrap_or(6379);
     let role = match args.replica_of {
         Some(s) => {
-            let (master_host, master_port) = s.split_once(' ').unwrap();
+            let (master_host, master_port) = s.split_once(' ').context("invalid value for --replicaof")?;
             let master_host: Ipv4Addr = if master_host == "localhost" {
                 "127.0.0.1".parse().unwrap()
             } else {
@@ -34,19 +34,16 @@ async fn main() {
                 master_port,
             }
         }
-        _ => Role::Master,
+        _ => Role::Master {
+            replication_id: "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb".to_owned(),
+            replication_offset: 0,
+        },
     };
     dbg!(port);
     dbg!(&role);
 
-    let server = Arc::new(Server::new(role));
+    let server = Server::new(role, port);
+    server.start().await?;
 
-    let addr = format!("127.0.0.1:{port}");
-    println!("listening on {addr}");
-    let listener = TcpListener::bind(addr).await.unwrap();
-    loop {
-        let (stream, _) = listener.accept().await.expect("incoming connection");
-        let server = server.clone();
-        tokio::spawn(async move { server.handle_connection(stream).await });
-    }
+    Ok(())
 }

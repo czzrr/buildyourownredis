@@ -14,6 +14,7 @@ pub enum Command {
         px: Option<u64>,
     },
     Info,
+    Replconf,
 }
 
 impl Command {
@@ -80,6 +81,7 @@ impl Command {
 
                         Ok(Command::Info)
                     }
+                    b"REPLCONF" => Ok(Command::Replconf),
                     _ => Err(anyhow!("unknown command: {}", elements[0].escape_ascii())),
                 }
             }

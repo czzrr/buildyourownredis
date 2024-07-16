@@ -90,23 +90,6 @@ impl Frame {
         Ok(line)
     }
 
-    // fn parse_crlf(input: &mut Cursor<&[u8]>) -> Result<(), ParseError> {
-    //     if input.remaining() < 2 {
-    //         return Err(ParseError::Incomplete);
-    //     }
-
-    //     let pos = input.position() as usize;
-    //     if &input.get_ref()[pos..pos + 2] == b"\r\n" {
-    //         input.advance(2);
-    //         Ok(())
-    //     } else {
-    //         Err(ParseError::Other(anyhow!(
-    //             "expected CRLF, got {}",
-    //             input.get_ref().escape_ascii()
-    //         )))
-    //     }
-    // }
-
     fn crlf_pos(input: &Cursor<&[u8]>) -> Option<u64> {
         input.get_ref()[input.position() as usize..]
             .windows(2)
