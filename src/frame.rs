@@ -6,6 +6,7 @@ use bytes::{Buf, Bytes};
 #[derive(Debug)]
 pub enum Frame {
     Bulk(Bytes),
+    Simple(String),
     Array(Vec<Frame>),
     Error(Bytes),
     Null,
@@ -61,6 +62,12 @@ impl Frame {
                 }
 
                 Ok(Frame::Bulk(Bytes::copy_from_slice(line)))
+            }
+            // Simple string
+            b'+' => {
+                let line = Frame::get_line(input)?;
+
+                Ok(Frame::Simple(String::from_utf8_lossy(line).to_string()))
             }
             b => Err(ParseError::Other(anyhow!("unknown data type token: {}", b))),
         }

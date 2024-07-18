@@ -24,6 +24,7 @@ impl FrameStream {
 
     pub async fn read_frame(&mut self) -> anyhow::Result<Option<Frame>> {
         loop {
+            dbg!(&self.buf);
             let mut cursor = Cursor::new(&self.buf[..]);
             match Frame::parse(&mut cursor) {
                 Ok(frame) => {
@@ -55,6 +56,11 @@ impl FrameStream {
                     .await?;
                 self.stream.write_all(b"\r\n").await?;
                 self.stream.write_all_buf(&mut bytes).await?;
+                self.stream.write_all(b"\r\n").await?;
+            }
+            Frame::Simple(s) => {
+                self.stream.write_all(b"+").await?;
+                self.stream.write_all(s.as_bytes()).await?;
                 self.stream.write_all(b"\r\n").await?;
             }
             Frame::Array(frames) => {
@@ -95,5 +101,9 @@ impl FrameStream {
             .map(|f| Frame::Bulk(Bytes::copy_from_slice(f.as_ref())))
             .collect();
         self.write_frame(Frame::Array(frames)).await
+    }
+
+    pub fn stream(&mut self) -> &mut BufWriter<TcpStream> {
+        &mut self.stream
     }
 }

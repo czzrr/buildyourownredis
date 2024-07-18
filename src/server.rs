@@ -6,8 +6,9 @@ use std::{
 };
 
 use anyhow::{anyhow, Context};
-use bytes::{Bytes, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     time::Instant,
 };
@@ -35,6 +36,7 @@ impl Server {
                 master_host,
                 master_port,
             } => {
+                // TODO: factor out to handshake()
                 let conn = TcpStream::connect(format!("{}:{}", master_host, master_port))
                     .await
                     .context("failed to connect to master")?;
@@ -61,6 +63,16 @@ impl Server {
                     .read_frame()
                     .await?
                     .ok_or(anyhow!("end of frame"))?;
+                frame_stream.write_array(vec!["PSYNC", "?", "-1"]).await?;
+                frame_stream
+                    .read_frame()
+                    .await?
+                    .ok_or(anyhow!("end of frame"))?;
+
+                let stream = frame_stream.stream();
+                let mut buf = Vec::new();
+                stream.read_buf(&mut buf).await.unwrap();
+                println!("rdb transfer: {}", buf.escape_ascii());
             }
             Role::Master { .. } => (),
         }
@@ -107,12 +119,12 @@ impl Server {
         frame_stream: &mut FrameStream,
         command: Command,
     ) -> anyhow::Result<()> {
-        let response = match command {
-            Command::Ping => Frame::Bulk(Bytes::from_static(b"PONG")),
-            Command::Echo(bytes) => Frame::Bulk(bytes),
+        let response = match command.clone() {
+            Command::Ping => Some(Frame::Bulk(Bytes::from_static(b"PONG"))),
+            Command::Echo(bytes) => Some(Frame::Bulk(bytes)),
             Command::Get(key) => {
                 let mut db = self.db.lock().unwrap();
-                match db.get(&key) {
+                let fr = match db.get(&key) {
                     Some(DbValue { value, expiry }) => {
                         if let Some(expiry) = expiry {
                             if expiry < &tokio::time::Instant::now() {
@@ -128,7 +140,9 @@ impl Server {
                         }
                     }
                     _ => Frame::Null,
-                }
+                };
+
+                Some(fr)
             }
             Command::Set { key, value, px } => {
                 let expiry =
@@ -136,7 +150,7 @@ impl Server {
                 let db_value = DbValue { value, expiry };
                 self.db.lock().unwrap().insert(key.clone(), db_value);
 
-                Frame::Bulk(Bytes::from_static(b"OK"))
+                Some(Frame::Bulk(Bytes::from_static(b"OK")))
             }
             Command::Info => {
                 let mut buf = BytesMut::new();
@@ -153,15 +167,58 @@ impl Server {
                     Role::Slave { .. } => buf.write_str("role:slave").unwrap(),
                 };
 
-                Frame::Bulk(buf.into())
+                Some(Frame::Bulk(buf.into()))
             }
-            Command::Replconf => Frame::Bulk(Bytes::from_static(b"OK")),
+            Command::Replconf => Some(Frame::Simple("OK".to_owned())),
+            _ => None,
         };
 
-        frame_stream
-            .write_frame(response)
-            .await
-            .expect("write response");
+        if let Some(response) = response {
+            frame_stream
+                .write_frame(response)
+                .await
+                .expect("write response");
+            return Ok(());
+        }
+
+        match command {
+            Command::Psync { .. } => {
+                match &self.role {
+                    Role::Slave { .. } => {
+                        frame_stream
+                            .write_frame(Frame::Error(Bytes::from_static(b"ERR not a master")))
+                            .await?;
+                        return Ok(());
+                    }
+                    Role::Master { replication_id, .. } => {
+                        frame_stream
+                            .write_frame(Frame::Simple(format!("FULLRESYNC {replication_id} 0")))
+                            .await?;
+                    }
+                }
+                dbg!("write empty rdb");
+                let stream = frame_stream.stream();
+
+                static EMPTY_RDB_HEX: &'static str = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
+                let empty_rdb_bin = hex::decode(EMPTY_RDB_HEX).unwrap();
+                dbg!(EMPTY_RDB_HEX.len());
+                dbg!(empty_rdb_bin.len());
+                let mut bytes = BytesMut::new();
+                bytes.put(empty_rdb_bin.len().to_string().as_bytes());
+                bytes.put(&b"\r\n"[..]);
+
+                stream.write_all(&bytes).await?;
+                stream.flush().await?;
+
+                bytes.put(&empty_rdb_bin[..]);
+
+                dbg!(&bytes);
+
+                stream.write_all(&bytes).await?;
+                stream.flush().await?;
+            }
+            _ => unreachable!(),
+        }
 
         Ok(())
     }

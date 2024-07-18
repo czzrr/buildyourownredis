@@ -3,7 +3,7 @@ use bytes::Bytes;
 
 use crate::frame::Frame;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Command {
     Ping,
     Echo(Bytes),
@@ -15,6 +15,10 @@ pub enum Command {
     },
     Info,
     Replconf,
+    Psync {
+        replication_id: String,
+        offset: i32,
+    },
 }
 
 impl Command {
@@ -82,6 +86,16 @@ impl Command {
                         Ok(Command::Info)
                     }
                     b"REPLCONF" => Ok(Command::Replconf),
+                    b"PSYNC" => {
+                        if elements.len() != 3 {
+                            return Err(anyhow!("expected: PSYNC <replication_id> <offset> "));
+                        }
+
+                        Ok(Command::Psync {
+                            replication_id: "?".to_owned(),
+                            offset: -1,
+                        })
+                    }
                     _ => Err(anyhow!("unknown command: {}", elements[0].escape_ascii())),
                 }
             }
